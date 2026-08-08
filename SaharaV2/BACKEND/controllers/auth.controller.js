@@ -1,32 +1,34 @@
-const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+
 require("dotenv").config();
 
 const UserModel = require("../models/User");
 const DoctorModel = require("../models/Doctor");
 const HospitalModel = require("../models/Hospital");
 
-// =====================================================
+// ============================================================
 // GENERATE JWT
-// =====================================================
+// ============================================================
 
 const generateToken = (user) => {
   return jwt.sign(
     {
-      id: user._id,
+      id: user._id.toString(),
       role: user.role,
     },
+
     process.env.JWT_SECRET,
+
     {
-      expiresIn: process.env.JWT_EXPIRES_IN || "1d",
+      expiresIn: process.env.JWT_EXPIRES_IN || "7d",
     },
   );
 };
 
-// =====================================================
+// ============================================================
 // REGISTER
-// =====================================================
+// ============================================================
 
 const register = async (req, res) => {
   try {
@@ -42,7 +44,6 @@ const register = async (req, res) => {
       dateOfBirth,
       address,
       city,
-      location,
 
       // Blood information
       bloodGroup,
@@ -57,28 +58,29 @@ const register = async (req, res) => {
       hospitalData,
     } = req.body;
 
-    // =================================================
+    // ====================================================
     // BASIC VALIDATION
-    // =================================================
+    // ====================================================
 
     if (!fullName || !email || !phone || !password) {
       return res.status(400).json({
         success: false,
+
         message: "Full name, email, phone and password are required.",
       });
     }
 
-    // =================================================
+    // ====================================================
     // NORMALIZE DATA
-    // =================================================
+    // ====================================================
 
     const normalizedEmail = email.trim().toLowerCase();
 
     const normalizedPhone = phone.trim();
 
-    // =================================================
+    // ====================================================
     // VALIDATE ROLE
-    // =================================================
+    // ====================================================
 
     const allowedRoles = ["Patient", "Doctor", "HospitalAdmin"];
 
@@ -87,35 +89,38 @@ const register = async (req, res) => {
     if (!allowedRoles.includes(userRole)) {
       return res.status(400).json({
         success: false,
+
         message: "Invalid role.",
       });
     }
 
-    // =================================================
+    // ====================================================
     // ADMIN CANNOT SELF REGISTER
-    // =================================================
+    // ====================================================
 
     if (userRole === "Admin") {
       return res.status(403).json({
         success: false,
+
         message: "Admin accounts cannot be created through registration.",
       });
     }
 
-    // =================================================
+    // ====================================================
     // PASSWORD VALIDATION
-    // =================================================
+    // ====================================================
 
     if (password.length < 8) {
       return res.status(400).json({
         success: false,
+
         message: "Password must be at least 8 characters long.",
       });
     }
 
-    // =================================================
-    // CHECK EXISTING EMAIL
-    // =================================================
+    // ====================================================
+    // CHECK EMAIL
+    // ====================================================
 
     const existingEmail = await UserModel.findOne({
       email: normalizedEmail,
@@ -124,13 +129,14 @@ const register = async (req, res) => {
     if (existingEmail) {
       return res.status(409).json({
         success: false,
+
         message: "Email is already registered.",
       });
     }
 
-    // =================================================
-    // CHECK EXISTING PHONE
-    // =================================================
+    // ====================================================
+    // CHECK PHONE
+    // ====================================================
 
     const existingPhone = await UserModel.findOne({
       phone: normalizedPhone,
@@ -139,22 +145,20 @@ const register = async (req, res) => {
     if (existingPhone) {
       return res.status(409).json({
         success: false,
+
         message: "Phone number is already registered.",
       });
     }
 
-    // =================================================
-    // ROLE-SPECIFIC VALIDATION
-    // =================================================
-
-    // -------------------------------------------------
-    // DOCTOR
-    // -------------------------------------------------
+    // ====================================================
+    // DOCTOR VALIDATION
+    // ====================================================
 
     if (userRole === "Doctor") {
       if (!doctorData) {
         return res.status(400).json({
           success: false,
+
           message: "Doctor information is required.",
         });
       }
@@ -163,46 +167,45 @@ const register = async (req, res) => {
         !doctorData.specialization ||
         !doctorData.qualification ||
         doctorData.experience === undefined ||
-        doctorData.experience === null ||
-        doctorData.experience === "" ||
-        doctorData.consultationFee === undefined ||
-        doctorData.consultationFee === null ||
-        doctorData.consultationFee === ""
+        doctorData.consultationFee === undefined
       ) {
         return res.status(400).json({
           success: false,
+
           message:
             "Specialization, qualification, experience and consultation fee are required.",
         });
       }
 
-      if (
-        Number.isNaN(Number(doctorData.experience)) ||
-        Number(doctorData.experience) < 0
-      ) {
+      const experience = Number(doctorData.experience);
+
+      const consultationFee = Number(doctorData.consultationFee);
+
+      if (!Number.isFinite(experience) || experience < 0) {
         return res.status(400).json({
           success: false,
+
           message: "Experience must be a valid non-negative number.",
         });
       }
 
-      if (
-        Number.isNaN(Number(doctorData.consultationFee)) ||
-        Number(doctorData.consultationFee) < 0
-      ) {
+      if (!Number.isFinite(consultationFee) || consultationFee < 0) {
         return res.status(400).json({
           success: false,
+
           message: "Consultation fee must be a valid non-negative number.",
         });
       }
 
-      // If doctor belongs to a hospital,
-      // hospital must be a valid MongoDB ObjectId.
+      // ------------------------------------------------
+      // HOSPITAL DOCTOR
+      // ------------------------------------------------
 
       if (doctorData.hospital) {
         if (!mongoose.Types.ObjectId.isValid(doctorData.hospital)) {
           return res.status(400).json({
             success: false,
+
             message: "Invalid hospital ID.",
           });
         }
@@ -212,76 +215,50 @@ const register = async (req, res) => {
         if (!hospital) {
           return res.status(404).json({
             success: false,
+
             message: "Hospital not found.",
           });
         }
       }
     }
 
-    // -------------------------------------------------
-    // HOSPITAL ADMIN
-    // -------------------------------------------------
+    // ====================================================
+    // HOSPITAL VALIDATION
+    // ====================================================
 
     if (userRole === "HospitalAdmin") {
       if (!hospitalData) {
         return res.status(400).json({
           success: false,
+
           message: "Hospital information is required.",
         });
       }
 
-      if (!hospitalData.name) {
-        return res.status(400).json({
-          success: false,
-          message: "Hospital name is required.",
-        });
-      }
+      const requiredFields = ["name", "phone", "email", "address", "city"];
 
-      if (!hospitalData.phone) {
-        return res.status(400).json({
-          success: false,
-          message: "Hospital phone is required.",
-        });
-      }
+      for (const field of requiredFields) {
+        if (!hospitalData[field] || !String(hospitalData[field]).trim()) {
+          return res.status(400).json({
+            success: false,
 
-      if (!hospitalData.email) {
-        return res.status(400).json({
-          success: false,
-          message: "Hospital email is required.",
-        });
-      }
-
-      if (!hospitalData.address) {
-        return res.status(400).json({
-          success: false,
-          message: "Hospital address is required.",
-        });
-      }
-
-      if (!hospitalData.city) {
-        return res.status(400).json({
-          success: false,
-          message: "Hospital city is required.",
-        });
+            message: `Hospital ${field} is required.`,
+          });
+        }
       }
     }
 
-    // =================================================
+    // ====================================================
     // CREATE USER
-    // =================================================
+    // ====================================================
 
     /*
      * IMPORTANT:
      *
-     * DO NOT bcrypt.hash(password) here if your
-     * User model already has:
+     * Do NOT hash the password here.
      *
-     * userSchema.pre("save", ...)
-     *
-     * because that would hash the password twice.
-     *
-     * We pass the plain password here and the
-     * User model hashes it automatically.
+     * User.js automatically hashes it
+     * using the pre-save hook.
      */
 
     const user = await UserModel.create({
@@ -305,39 +282,39 @@ const register = async (req, res) => {
 
       city: city || undefined,
 
-      location: location || undefined,
+      // ==========================================
+      // BLOOD INFORMATION
+      // ==========================================
 
-      // Blood information
       bloodGroup: bloodGroup || undefined,
 
-      availability: availability !== undefined ? availability : undefined,
+      availability: availability !== undefined ? availability : true,
 
       emergencyAvailable:
-        emergencyAvailable !== undefined ? emergencyAvailable : undefined,
+        emergencyAvailable !== undefined ? emergencyAvailable : true,
 
       lastDonationDate: lastDonationDate || undefined,
 
-      totalDonations:
-        totalDonations !== undefined ? Number(totalDonations) : undefined,
+      totalDonations: totalDonations !== undefined ? Number(totalDonations) : 0,
 
       remarks: remarks || undefined,
     });
 
-    // =================================================
+    // ====================================================
     // CREATE DOCTOR PROFILE
-    // =================================================
+    // ====================================================
 
     let doctor = null;
 
     if (userRole === "Doctor") {
+      const practiceType =
+        doctorData.practiceType ||
+        (doctorData.hospital ? "Hospital" : "Independent");
+
       const doctorPayload = {
         user: user._id,
 
-        // Your Doctor schema supports both
-        // Hospital and Independent doctors.
-        practiceType:
-          doctorData.practiceType ||
-          (doctorData.hospital ? "Hospital" : "Independent"),
+        practiceType,
 
         specialization: doctorData.specialization.trim(),
 
@@ -362,9 +339,9 @@ const register = async (req, res) => {
         bio: doctorData.bio || "",
       };
 
-      // -------------------------------------------------
+      // ------------------------------------------------
       // HOSPITAL DOCTOR
-      // -------------------------------------------------
+      // ------------------------------------------------
 
       if (doctorData.hospital) {
         doctorPayload.hospital = doctorData.hospital;
@@ -372,9 +349,9 @@ const register = async (req, res) => {
         doctorPayload.practiceType = "Hospital";
       }
 
-      // -------------------------------------------------
+      // ------------------------------------------------
       // VIRTUAL CONSULTATION FEE
-      // -------------------------------------------------
+      // ------------------------------------------------
 
       if (
         doctorData.virtualConsultationFee !== undefined &&
@@ -389,23 +366,23 @@ const register = async (req, res) => {
       doctor = await DoctorModel.create(doctorPayload);
     }
 
-    // =================================================
+    // ====================================================
     // CREATE HOSPITAL PROFILE
-    // =================================================
+    // ====================================================
 
     let hospital = null;
 
     if (userRole === "HospitalAdmin") {
       /*
-       * IMPORTANT FIX:
+       * IMPORTANT:
        *
        * Hospital schema uses:
        *
-       * admin: ObjectId -> User
+       * admin: User._id
        *
        * NOT:
        *
-       * user: user._id
+       * user: User._id
        */
 
       hospital = await HospitalModel.create({
@@ -425,7 +402,8 @@ const register = async (req, res) => {
 
         city: hospitalData.city.trim(),
 
-        location: hospitalData.location || undefined,
+        // No latitude/longitude
+        // No location field
 
         departments: Array.isArray(hospitalData.departments)
           ? hospitalData.departments
@@ -473,15 +451,15 @@ const register = async (req, res) => {
       });
     }
 
-    // =================================================
-    // GENERATE JWT
-    // =================================================
+    // ====================================================
+    // GENERATE TOKEN
+    // ====================================================
 
     const token = generateToken(user);
 
-    // =================================================
+    // ====================================================
     // RESPONSE
-    // =================================================
+    // ====================================================
 
     return res.status(201).json({
       success: true,
@@ -506,7 +484,6 @@ const register = async (req, res) => {
         isVerified: user.isVerified,
       },
 
-      // Role-specific profile
       profile:
         userRole === "Doctor"
           ? doctor
@@ -514,29 +491,29 @@ const register = async (req, res) => {
             ? hospital
             : null,
     });
-  } catch (err) {
-    console.error("Registration Error:", err);
+  } catch (error) {
+    console.error("Registration Error:", error);
 
-    // =================================================
-    // DUPLICATE KEY ERROR
-    // =================================================
+    // ====================================================
+    // DUPLICATE KEY
+    // ====================================================
 
-    if (err.code === 11000) {
-      const duplicateField = Object.keys(err.keyPattern || {})[0];
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0];
 
       return res.status(409).json({
         success: false,
 
-        message: `${duplicateField || "Field"} is already registered.`,
+        message: `${field || "Field"} is already registered.`,
       });
     }
 
-    // =================================================
-    // VALIDATION ERROR
-    // =================================================
+    // ====================================================
+    // MONGOOSE VALIDATION ERROR
+    // ====================================================
 
-    if (err.name === "ValidationError") {
-      const messages = Object.values(err.errors).map((error) => error.message);
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map((item) => item.message);
 
       return res.status(400).json({
         success: false,
@@ -545,9 +522,9 @@ const register = async (req, res) => {
       });
     }
 
-    // =================================================
-    // DEFAULT ERROR
-    // =================================================
+    // ====================================================
+    // SERVER ERROR
+    // ====================================================
 
     return res.status(500).json({
       success: false,
@@ -557,17 +534,17 @@ const register = async (req, res) => {
   }
 };
 
-// =====================================================
+// ============================================================
 // LOGIN
-// =====================================================
+// ============================================================
 
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // =================================================
+    // ====================================================
     // VALIDATION
-    // =================================================
+    // ====================================================
 
     if (!email || !password) {
       return res.status(400).json({
@@ -577,17 +554,19 @@ const login = async (req, res) => {
       });
     }
 
-    // =================================================
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // ====================================================
     // FIND USER
-    // =================================================
+    // ====================================================
 
     /*
-     * password has select:false in User schema,
-     * therefore explicitly include it.
+     * password has select:false
+     * so we explicitly select it.
      */
 
     const user = await UserModel.findOne({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
     }).select("+password");
 
     if (!user) {
@@ -598,9 +577,9 @@ const login = async (req, res) => {
       });
     }
 
-    // =================================================
+    // ====================================================
     // CHECK ACCOUNT
-    // =================================================
+    // ====================================================
 
     if (!user.isActive) {
       return res.status(403).json({
@@ -610,9 +589,9 @@ const login = async (req, res) => {
       });
     }
 
-    // =================================================
+    // ====================================================
     // CHECK PASSWORD
-    // =================================================
+    // ====================================================
 
     const passwordMatch = await user.comparePassword(password);
 
@@ -624,24 +603,23 @@ const login = async (req, res) => {
       });
     }
 
-    // =================================================
+    // ====================================================
     // UPDATE LAST LOGIN
-    // =================================================
+    // ====================================================
 
     user.lastLogin = new Date();
 
-    /*
-     * This save will NOT hash the password again
-     * because password has not been modified.
-     */
-
     await user.save();
 
-    // =================================================
-    // GET ROLE PROFILE
-    // =================================================
+    // ====================================================
+    // ROLE PROFILE
+    // ====================================================
 
     let profile = null;
+
+    // ----------------------------------------------------
+    // DOCTOR
+    // ----------------------------------------------------
 
     if (user.role === "Doctor") {
       profile = await DoctorModel.findOne({
@@ -649,21 +627,25 @@ const login = async (req, res) => {
       }).populate("hospital", "name city address phone");
     }
 
+    // ----------------------------------------------------
+    // HOSPITAL ADMIN
+    // ----------------------------------------------------
+
     if (user.role === "HospitalAdmin") {
       profile = await HospitalModel.findOne({
         admin: user._id,
       });
     }
 
-    // =================================================
+    // ====================================================
     // GENERATE TOKEN
-    // =================================================
+    // ====================================================
 
     const token = generateToken(user);
 
-    // =================================================
+    // ====================================================
     // RESPONSE
-    // =================================================
+    // ====================================================
 
     return res.status(200).json({
       success: true,
@@ -690,8 +672,8 @@ const login = async (req, res) => {
 
       profile,
     });
-  } catch (err) {
-    console.error("Login Error:", err);
+  } catch (error) {
+    console.error("Login Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -701,16 +683,12 @@ const login = async (req, res) => {
   }
 };
 
-// =====================================================
-// CHECK CURRENT USER
-// =====================================================
+// ============================================================
+// CHECK LOGGED-IN USER
+// ============================================================
 
 const checkUser = async (req, res) => {
   try {
-    // -------------------------------------------------
-    // AUTHENTICATION CHECK
-    // -------------------------------------------------
-
     if (!req.user || !req.user.id) {
       return res.status(401).json({
         success: false,
@@ -719,11 +697,7 @@ const checkUser = async (req, res) => {
       });
     }
 
-    // -------------------------------------------------
-    // GET USER
-    // -------------------------------------------------
-
-    const user = await UserModel.findById(req.user.id).select("-password");
+    const user = await UserModel.findById(req.user.id);
 
     if (!user) {
       return res.status(404).json({
@@ -733,11 +707,11 @@ const checkUser = async (req, res) => {
       });
     }
 
-    // -------------------------------------------------
-    // GET PROFILE
-    // -------------------------------------------------
-
     let profile = null;
+
+    // ====================================================
+    // DOCTOR
+    // ====================================================
 
     if (user.role === "Doctor") {
       profile = await DoctorModel.findOne({
@@ -745,15 +719,15 @@ const checkUser = async (req, res) => {
       }).populate("hospital", "name city address phone");
     }
 
+    // ====================================================
+    // HOSPITAL ADMIN
+    // ====================================================
+
     if (user.role === "HospitalAdmin") {
       profile = await HospitalModel.findOne({
         admin: user._id,
       });
     }
-
-    // -------------------------------------------------
-    // RESPONSE
-    // -------------------------------------------------
 
     return res.status(200).json({
       success: true,
@@ -762,8 +736,8 @@ const checkUser = async (req, res) => {
 
       profile,
     });
-  } catch (err) {
-    console.error("Check User Error:", err);
+  } catch (error) {
+    console.error("Check User Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -773,18 +747,9 @@ const checkUser = async (req, res) => {
   }
 };
 
-// =====================================================
+// ============================================================
 // LOGOUT
-// =====================================================
-
-/*
- * JWT is stateless.
- *
- * The frontend should remove the token from
- * localStorage/cookies.
- *
- * This endpoint exists mainly for a clean API design.
- */
+// ============================================================
 
 const logout = async (req, res) => {
   return res.status(200).json({
@@ -794,9 +759,9 @@ const logout = async (req, res) => {
   });
 };
 
-// =====================================================
+// ============================================================
 // EXPORT
-// =====================================================
+// ============================================================
 
 module.exports = {
   register,
