@@ -57,18 +57,6 @@ const bloodRequestSchema = new mongoose.Schema(
       trim: true,
     },
 
-    location: {
-      type: {
-        type: String,
-        enum: ["Point"],
-        default: "Point",
-      },
-      coordinates: {
-        type: [Number], // [longitude, latitude]
-        default: undefined,
-      },
-    },
-
     urgency: {
       type: String,
       enum: ["Low", "Medium", "High", "Critical"],
@@ -115,11 +103,6 @@ const bloodRequestSchema = new mongoose.Schema(
   {
     timestamps: true,
   }
-);
-
-bloodRequestSchema.index(
-  { location: "2dsphere" },
-  { sparse: true }
 );
 
 module.exports = mongoose.model("BloodRequest", bloodRequestSchema);

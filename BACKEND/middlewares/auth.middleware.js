@@ -1,30 +1,40 @@
-const bcrypt = require("bcryptjs")
-const jwt = require("jsonwebtoken")
-require("dotenv").config()
-const UserModel = require("../models/User")
-const DoctorModel = require("../models/Doctor")
-const HospitalModel = require("../models/Hospital")
+const jwt = require("jsonwebtoken");
+require("dotenv").config();
 
-const checkAuth = async (req,res)=>{
-    try{
-        const token = req.token;
-        if(!token) return res.status(404).json({message:"Something went wrong",auth:false});
-        const userData = jwt.verify(token,PROCESS.ENV.JWT_SECRET)
-if(userData){
-    if(userData.type==="USER"){
+const authMiddleware = (req, res, next) => {
+    try {
+        const authHeader = req.headers.authorization;
 
-    }else  if(userData.type==="DOCTOR"){
-        
-    }else  if(userData.type==="HOSPITAL"){
-        
-    }else{
-        return res.status(404).json({message:"Not verrified"})
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required."
+            });
+        }
+
+        const token = authHeader.split(" ")[1];
+
+        const decoded = jwt.verify(
+            token,
+            process.env.JWT_SECRET
+        );
+
+        req.user = {
+            id: decoded.id,
+            role: decoded.role
+        };
+
+        next();
+
+    } catch (error) {
+
+        console.error("Auth Middleware Error:", error);
+
+        return res.status(401).json({
+            success: false,
+            message: "Invalid or expired token."
+        });
     }
+};
 
-}
-    }catch(err){
-        console.log(err.message)
-        return res.status(404).json({message:"Something went wrong."})
-
-    }
-}
+module.exports = authMiddleware;

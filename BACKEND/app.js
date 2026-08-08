@@ -15,10 +15,13 @@ connectDB();
 // Routes
 const aiRoutes = require("./routes/ai.routes");
 const authRoutes = require("./routes/auth.routes");
-
+const bloodRequestRoutes = require("./routes/blood.routes");
+const hospitalRoutes = require("./routes/hospital.routes.js")
 // Use Routes
 app.use("/api/ai", aiRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/blood-requests", bloodRequestRoutes);
+app.use("/api/hospitals", hospitalRoutes);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
