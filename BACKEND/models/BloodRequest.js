@@ -40,8 +40,13 @@ const bloodRequestSchema = new mongoose.Schema(
     hospital: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Hospital",
-      required: true,
+      default: null,
       index: true,
+    },
+
+    hospitalName: {
+      type: String,
+      trim: true,
     },
 
     city: {
