@@ -307,7 +307,48 @@ const cancelBloodRequest = async (req, res) => {
     });
   }
 };
+// =====================================================
+// GET ACTIVE BLOOD REQUESTS
+// =====================================================
 
+const getActiveBloodRequests = async (req, res) => {
+  try {
+    const requests = await BloodRequestModel.find({
+      status: "Open",
+      requiredBy: {
+        $gt: new Date(),
+      },
+    })
+      .populate(
+        "requestedBy",
+        "fullName email phone"
+      )
+      .populate(
+        "hospital",
+        "hospitalName name address city phone"
+      )
+      .sort({
+        createdAt: -1,
+      });
+
+    return res.status(200).json({
+      success: true,
+      count: requests.length,
+      requests,
+    });
+  } catch (error) {
+    console.error(
+      "Get Active Blood Requests Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Something went wrong while fetching active blood requests.",
+    });
+  }
+};
 // =====================================================
 // EXPORT
 // =====================================================
@@ -317,4 +358,5 @@ module.exports = {
   getMyBloodRequests,
   getBloodRequestById,
   cancelBloodRequest,
+  getActiveBloodRequests
 };

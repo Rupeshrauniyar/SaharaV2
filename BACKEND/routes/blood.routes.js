@@ -4,7 +4,8 @@ const {
     createBloodRequest,
     getMyBloodRequests,
     getBloodRequestById,
-    cancelBloodRequest
+    cancelBloodRequest,
+    getActiveBloodRequests
 } = require("../controllers/blood.controller");
 
 const authMiddleware = require("../middlewares/auth.middleware");
@@ -18,7 +19,11 @@ router.post(
     authMiddleware,
     createBloodRequest
 );
-
+router.get(
+    "/active",
+    authMiddleware,
+    getActiveBloodRequests
+  );
 
 // Get my blood requests
 router.get(

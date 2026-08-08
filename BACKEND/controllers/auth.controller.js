@@ -182,6 +182,7 @@ const register = async (req, res) => {
         qualification,
         experience,
         consultationFee,
+        virtualConsultationFee,
         availableDays,
         availableTime,
         isAvailable,
@@ -217,6 +218,14 @@ const register = async (req, res) => {
         isAvailable: isAvailable !== undefined ? isAvailable : true,
         bio,
       };
+
+      if (
+        virtualConsultationFee !== undefined &&
+        virtualConsultationFee !== null &&
+        virtualConsultationFee !== ""
+      ) {
+        doctorPayload.virtualConsultationFee = Number(virtualConsultationFee);
+      }
 
       if (hospital) {
         const linkedHospital = await HospitalModel.findById(hospital);

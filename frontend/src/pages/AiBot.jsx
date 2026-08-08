@@ -380,7 +380,7 @@ const AiBot = () => {
   };
 
   return (
-    <div className="h-screen bg-[#f7f9fc] flex flex-col overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#f7f9fc] overflow-hidden">
 
       {/* ================================================= */}
       {/* HEADER */}

@@ -3,36 +3,40 @@ import React, { useEffect, useMemo, useState } from "react";
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
-// Change these if your router uses different paths.
 const BLOOD_REQUEST_API = `${API_BASE_URL}/blood-requests`;
 const HOSPITAL_API = `${API_BASE_URL}/hospitals`;
 
-const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+const BLOOD_GROUPS = [
+  "A+",
+  "A-",
+  "B+",
+  "B-",
+  "AB+",
+  "AB-",
+  "O+",
+  "O-",
+];
 
 const URGENCIES = [
   {
     value: "Low",
     label: "Low",
     description: "Can wait",
-    color: "emerald",
   },
   {
     value: "Medium",
     label: "Medium",
     description: "Needed soon",
-    color: "amber",
   },
   {
     value: "High",
     label: "High",
     description: "Needs attention",
-    color: "orange",
   },
   {
     value: "Critical",
     label: "Critical",
     description: "Immediate need",
-    color: "red",
   },
 ];
 
@@ -41,7 +45,6 @@ const EMPTY_FORM = {
   bloodGroup: "",
   unitsRequired: 1,
   hospital: "",
-  hospitalName: "",
   city: "",
   address: "",
   urgency: "Medium",
@@ -57,58 +60,45 @@ const BloodRequest = () => {
   const [form, setForm] = useState(EMPTY_FORM);
 
   const [requests, setRequests] = useState([]);
-
+  const [activeRequests, setActiveRequests] = useState([]);
   const [hospitals, setHospitals] = useState([]);
 
   const [loadingRequests, setLoadingRequests] = useState(false);
-
+  const [loadingActiveRequests, setLoadingActiveRequests] = useState(false);
   const [loadingHospitals, setLoadingHospitals] = useState(false);
-
   const [submitting, setSubmitting] = useState(false);
 
   const [selectedRequest, setSelectedRequest] = useState(null);
-
   const [loadingDetails, setLoadingDetails] = useState(false);
-
   const [cancellingId, setCancellingId] = useState(null);
 
   const [successMessage, setSuccessMessage] = useState("");
-
   const [errorMessage, setErrorMessage] = useState("");
-
   const [fieldErrors, setFieldErrors] = useState({});
 
-  const [hospitalInputMode, setHospitalInputMode] = useState("select");
-
-  // =====================================================
-  // AUTH
-  // =====================================================
-
   const getToken = () => {
-    return localStorage.getItem("token") || sessionStorage.getItem("token");
+    return (
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token") ||
+      localStorage.getItem("accessToken") ||
+      sessionStorage.getItem("accessToken")
+    );
   };
-
-  // =====================================================
-  // API HELPER
-  // =====================================================
 
   const apiRequest = async (url, options = {}) => {
     const token = getToken();
 
+    const headers = {
+      ...(options.body instanceof FormData
+        ? {}
+        : { "Content-Type": "application/json" }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    };
+
     const response = await fetch(url, {
       ...options,
-
-      headers: {
-        "Content-Type": "application/json",
-
-        ...(token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : {}),
-
-        ...(options.headers || {}),
-      },
+      headers,
     });
 
     let data = null;
@@ -121,20 +111,14 @@ const BloodRequest = () => {
 
     if (!response.ok) {
       throw new Error(
-        data?.message || "Something went wrong. Please try again.",
+        data?.message ||
+          data?.error ||
+          `Request failed with status ${response.status}`
       );
     }
 
     return data;
   };
-
-  // =====================================================
-  // LOAD HOSPITALS
-  // =====================================================
-
-  useEffect(() => {
-    loadHospitals();
-  }, []);
 
   const loadHospitals = async () => {
     setLoadingHospitals(true);
@@ -142,51 +126,83 @@ const BloodRequest = () => {
     try {
       const data = await apiRequest(HOSPITAL_API);
 
-      const hospitalList = data?.hospitals || data?.data || [];
+      const hospitalList =
+        data?.hospitals ||
+        data?.data ||
+        data?.results ||
+        [];
 
       setHospitals(Array.isArray(hospitalList) ? hospitalList : []);
     } catch (error) {
       console.error("Hospital loading error:", error);
-
-      // Hospital API may not exist yet.
-      // The form still remains usable.
       setHospitals([]);
     } finally {
       setLoadingHospitals(false);
     }
   };
 
-  // =====================================================
-  // LOAD MY REQUESTS
-  // =====================================================
-
-  useEffect(() => {
-    if (activeTab === "requests") {
-      loadMyRequests();
-    }
-  }, [activeTab]);
-
   const loadMyRequests = async () => {
     setLoadingRequests(true);
-    setErrorMessage("");
 
     try {
       const data = await apiRequest(`${BLOOD_REQUEST_API}/my`);
 
-      setRequests(Array.isArray(data?.requests) ? data.requests : []);
+      const requestList =
+        data?.requests ||
+        data?.data ||
+        data?.results ||
+        [];
+
+      setRequests(Array.isArray(requestList) ? requestList : []);
     } catch (error) {
+      console.error("My blood requests loading error:", error);
       setErrorMessage(error.message);
+      setRequests([]);
     } finally {
       setLoadingRequests(false);
     }
   };
 
-  // =====================================================
-  // FORM HANDLER
-  // =====================================================
+  const loadActiveRequests = async () => {
+    setLoadingActiveRequests(true);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+    try {
+      const data = await apiRequest(`${BLOOD_REQUEST_API}/active`);
+
+      const requestList =
+        data?.requests ||
+        data?.data ||
+        data?.results ||
+        [];
+
+      setActiveRequests(
+        Array.isArray(requestList) ? requestList : []
+      );
+    } catch (error) {
+      console.error("Active blood requests loading error:", error);
+      setErrorMessage(error.message);
+      setActiveRequests([]);
+    } finally {
+      setLoadingActiveRequests(false);
+    }
+  };
+
+  useEffect(() => {
+    loadHospitals();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "active") {
+      loadActiveRequests();
+    }
+
+    if (activeTab === "requests") {
+      loadMyRequests();
+    }
+  }, [activeTab]);
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
 
     setForm((previous) => ({
       ...previous,
@@ -203,51 +219,29 @@ const BloodRequest = () => {
     setErrorMessage("");
   };
 
-  // =====================================================
-  // HOSPITAL CHANGE
-  // =====================================================
-
-  const handleHospitalChange = (e) => {
-    const hospitalId = e.target.value;
+  const handleHospitalChange = (event) => {
+    const hospitalId = event.target.value;
 
     const hospital = hospitals.find(
-      (item) => String(item._id) === String(hospitalId),
+      (item) => String(item._id) === String(hospitalId)
     );
 
     setForm((previous) => ({
       ...previous,
       hospital: hospitalId,
-      hospitalName: "",
-      city: hospital?.city || previous.city,
-      address: hospital?.address || previous.address,
+      city: hospital?.city || "",
+      address: hospital?.address || "",
     }));
 
     setFieldErrors((previous) => ({
       ...previous,
       hospital: "",
-      hospitalName: "",
+      city: "",
+      address: "",
     }));
+
+    setErrorMessage("");
   };
-
-  const handleHospitalInputModeChange = (mode) => {
-    setHospitalInputMode(mode);
-
-    setForm((previous) => ({
-      ...previous,
-      hospital: mode === "select" ? previous.hospital : "",
-      hospitalName: mode === "manual" ? previous.hospitalName : "",
-    }));
-
-    setFieldErrors((previous) => ({
-      ...previous,
-      hospital: "",
-      hospitalName: "",
-    }));
-  };
-
-  // =====================================================
-  // VALIDATION
-  // =====================================================
 
   const validateForm = () => {
     const errors = {};
@@ -260,20 +254,16 @@ const BloodRequest = () => {
       errors.bloodGroup = "Select a blood group.";
     }
 
-    if (!form.unitsRequired || Number(form.unitsRequired) < 1) {
-      errors.unitsRequired = "At least 1 unit is required.";
-    }
+    const units = Number(form.unitsRequired);
 
-    if (!Number.isInteger(Number(form.unitsRequired))) {
+    if (!form.unitsRequired || units < 1) {
+      errors.unitsRequired = "At least 1 unit is required.";
+    } else if (!Number.isInteger(units)) {
       errors.unitsRequired = "Units must be a whole number.";
     }
 
-    if (hospitalInputMode === "select" && !form.hospital) {
+    if (!form.hospital) {
       errors.hospital = "Please select a hospital.";
-    }
-
-    if (hospitalInputMode === "manual" && !form.hospitalName.trim()) {
-      errors.hospitalName = "Please enter a hospital name.";
     }
 
     if (!form.city.trim()) {
@@ -286,6 +276,15 @@ const BloodRequest = () => {
 
     if (!form.requiredBy) {
       errors.requiredBy = "Required-by date is required.";
+    } else {
+      const requiredDate = new Date(form.requiredBy);
+
+      if (Number.isNaN(requiredDate.getTime())) {
+        errors.requiredBy = "Please enter a valid date.";
+      } else if (requiredDate <= new Date()) {
+        errors.requiredBy =
+          "Required-by date must be in the future.";
+      }
     }
 
     if (!form.contactName.trim()) {
@@ -294,9 +293,11 @@ const BloodRequest = () => {
 
     if (!form.contactPhone.trim()) {
       errors.contactPhone = "Contact phone is required.";
-    }
-
-    if (form.contactPhone && !/^[0-9+\-\s()]{7,20}$/.test(form.contactPhone)) {
+    } else if (
+      !/^[0-9+\-\s()]{7,20}$/.test(
+        form.contactPhone.trim()
+      )
+    ) {
       errors.contactPhone = "Enter a valid phone number.";
     }
 
@@ -305,12 +306,8 @@ const BloodRequest = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // =====================================================
-  // CREATE REQUEST
-  // =====================================================
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
 
     setSuccessMessage("");
     setErrorMessage("");
@@ -324,32 +321,21 @@ const BloodRequest = () => {
     try {
       const payload = {
         patientName: form.patientName.trim(),
-
         bloodGroup: form.bloodGroup,
-
         unitsRequired: Number(form.unitsRequired),
-
-        ...(hospitalInputMode === "select" && form.hospital
-          ? { hospital: form.hospital }
-          : {}),
-
-        ...(hospitalInputMode === "manual" && form.hospitalName.trim()
-          ? { hospitalName: form.hospitalName.trim() }
-          : {}),
-
+        hospital: form.hospital,
         city: form.city.trim(),
-
         address: form.address.trim(),
-
         urgency: form.urgency,
-
         requiredBy: new Date(form.requiredBy).toISOString(),
-
         contactName: form.contactName.trim(),
-
         contactPhone: form.contactPhone.trim(),
-
-        additionalNotes: form.additionalNotes.trim() || undefined,
+        ...(form.additionalNotes.trim()
+          ? {
+              additionalNotes:
+                form.additionalNotes.trim(),
+            }
+          : {}),
       };
 
       const data = await apiRequest(BLOOD_REQUEST_API, {
@@ -357,54 +343,65 @@ const BloodRequest = () => {
         body: JSON.stringify(payload),
       });
 
-      setSuccessMessage(data?.message || "Blood request created successfully.");
+      setSuccessMessage(
+        data?.message ||
+          "Blood request created successfully."
+      );
 
       setForm(EMPTY_FORM);
-      setHospitalInputMode("select");
       setFieldErrors({});
 
-      // Refresh requests
-      await loadMyRequests();
-
-      // Show created request
       if (data?.request) {
         setSelectedRequest(data.request);
       }
 
+      await Promise.all([
+        loadMyRequests(),
+        loadActiveRequests(),
+      ]);
+
       setActiveTab("requests");
     } catch (error) {
+      console.error(
+        "Create blood request error:",
+        error
+      );
+
       setErrorMessage(error.message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  // =====================================================
-  // GET SINGLE REQUEST
-  // =====================================================
-
   const openRequest = async (id) => {
     setLoadingDetails(true);
     setErrorMessage("");
 
     try {
-      const data = await apiRequest(`${BLOOD_REQUEST_API}/${id}`);
+      const data = await apiRequest(
+        `${BLOOD_REQUEST_API}/${id}`
+      );
 
-      setSelectedRequest(data?.request || null);
+      setSelectedRequest(
+        data?.request ||
+          data?.data ||
+          null
+      );
     } catch (error) {
+      console.error(
+        "Request details error:",
+        error
+      );
+
       setErrorMessage(error.message);
     } finally {
       setLoadingDetails(false);
     }
   };
 
-  // =====================================================
-  // CANCEL REQUEST
-  // =====================================================
-
   const cancelRequest = async (id) => {
     const confirmed = window.confirm(
-      "Are you sure you want to cancel this blood request?",
+      "Are you sure you want to cancel this blood request?"
     );
 
     if (!confirmed) {
@@ -416,44 +413,60 @@ const BloodRequest = () => {
     setSuccessMessage("");
 
     try {
-      const data = await apiRequest(`${BLOOD_REQUEST_API}/${id}/cancel`, {
-        method: "PATCH",
-      });
-
-      setSuccessMessage(
-        data?.message || "Blood request cancelled successfully.",
+      const data = await apiRequest(
+        `${BLOOD_REQUEST_API}/${id}/cancel`,
+        {
+          method: "PATCH",
+        }
       );
 
-      await loadMyRequests();
+      setSuccessMessage(
+        data?.message ||
+          "Blood request cancelled successfully."
+      );
+
+      await Promise.all([
+        loadMyRequests(),
+        loadActiveRequests(),
+      ]);
 
       if (selectedRequest?._id === id) {
-        setSelectedRequest(data?.request || selectedRequest);
+        setSelectedRequest(
+          data?.request || {
+            ...selectedRequest,
+            status: "Cancelled",
+          }
+        );
       }
     } catch (error) {
+      console.error(
+        "Cancel request error:",
+        error
+      );
+
       setErrorMessage(error.message);
     } finally {
       setCancellingId(null);
     }
   };
 
-  // =====================================================
-  // STATISTICS
-  // =====================================================
-
   const stats = useMemo(() => {
-    const open = requests.filter((item) => item.status === "Open").length;
+    const open = requests.filter(
+      (item) => item.status === "Open"
+    ).length;
 
     const completed = requests.filter(
-      (item) => item.status === "Completed",
+      (item) => item.status === "Completed"
     ).length;
 
     const cancelled = requests.filter(
-      (item) => item.status === "Cancelled",
+      (item) => item.status === "Cancelled"
     ).length;
 
     const totalUnits = requests.reduce(
-      (sum, item) => sum + Number(item.unitsRequired || 0),
-      0,
+      (sum, item) =>
+        sum + Number(item.unitsRequired || 0),
+      0
     );
 
     return {
@@ -464,190 +477,168 @@ const BloodRequest = () => {
     };
   }, [requests]);
 
-  // =====================================================
-  // RENDER
-  // =====================================================
+  const resetForm = () => {
+    setForm(EMPTY_FORM);
+    setFieldErrors({});
+    setErrorMessage("");
+    setSuccessMessage("");
+  };
 
   return (
-    <div className="min-h-screen bg-[#f6f9fc]">
-      {/* =================================================
-          HEADER
-      ================================================= */}
-
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="h-20 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center">
-                <BloodDropIcon />
-              </div>
-
-              <div>
-                <h1 className="text-lg sm:text-xl font-black tracking-tight text-slate-900">
-                  Blood Support
-                </h1>
-
-                <p className="text-xs text-slate-400">
-                  Request blood when you need it
-                </p>
-              </div>
-            </div>
-
-            <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-
-              <span className="text-xs font-semibold">
-                Sahara Blood Network
-              </span>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* =================================================
-          MAIN
-      ================================================= */}
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-7 sm:py-10">
-        {/* =================================================
-            PAGE INTRO
-        ================================================= */}
-
-        <div className="mb-7">
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
-            <div>
+    <div className="w-full">
+      <div className="mb-7">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-red-500" />
               <p className="text-xs font-bold tracking-[0.18em] text-red-600 uppercase">
                 BLOOD ASSISTANCE
               </p>
-
-              <h2 className="text-3xl sm:text-4xl font-black tracking-[-0.045em] text-slate-950 mt-2">
-                Help starts with a request.
-              </h2>
-
-              <p className="text-sm sm:text-base text-slate-500 max-w-2xl leading-7 mt-3">
-                Create a blood request and keep track of its status through your
-                Sahara account.
-              </p>
             </div>
 
-            {/* Stats */}
+            <h2 className="text-3xl sm:text-4xl font-black tracking-[-0.045em] text-slate-950 mt-2">
+              Help starts with a request.
+            </h2>
 
-            {requests.length > 0 && (
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                <StatCard label="Open" value={stats.open} color="red" />
-
-                <StatCard
-                  label="Completed"
-                  value={stats.completed}
-                  color="emerald"
-                />
-
-                <StatCard
-                  label="Cancelled"
-                  value={stats.cancelled}
-                  color="slate"
-                />
-
-                <StatCard
-                  label="Units"
-                  value={stats.totalUnits}
-                  color="blue"
-                  className="hidden sm:block"
-                />
-              </div>
-            )}
+            <p className="text-sm sm:text-base text-slate-500 max-w-2xl leading-7 mt-3">
+              Request blood, discover people who need
+              help, and manage your requests through
+              Sahara.
+            </p>
           </div>
+
+          {requests.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              <StatCard
+                label="Open"
+                value={stats.open}
+                color="red"
+              />
+
+              <StatCard
+                label="Completed"
+                value={stats.completed}
+                color="emerald"
+              />
+
+              <StatCard
+                label="Cancelled"
+                value={stats.cancelled}
+                color="slate"
+              />
+
+              <StatCard
+                label="Units"
+                value={stats.totalUnits}
+                color="blue"
+                className="hidden sm:block"
+              />
+            </div>
+          )}
         </div>
+      </div>
 
-        {/* =================================================
-            ALERTS
-        ================================================= */}
+      {successMessage && (
+        <Alert
+          type="success"
+          message={successMessage}
+          onClose={() => setSuccessMessage("")}
+        />
+      )}
 
-        {successMessage && (
-          <Alert
-            type="success"
-            message={successMessage}
-            onClose={() => setSuccessMessage("")}
-          />
-        )}
+      {errorMessage && (
+        <Alert
+          type="error"
+          message={errorMessage}
+          onClose={() => setErrorMessage("")}
+        />
+      )}
 
-        {errorMessage && (
-          <Alert
-            type="error"
-            message={errorMessage}
-            onClose={() => setErrorMessage("")}
-          />
-        )}
+      <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-2xl w-fit mb-6">
+        <TabButton
+          active={activeTab === "create"}
+          onClick={() => setActiveTab("create")}
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-red-500 text-base">
+              +
+            </span>
+            New Request
+          </span>
+        </TabButton>
 
-        {/* =================================================
-            TABS
-        ================================================= */}
+        <TabButton
+          active={activeTab === "active"}
+          onClick={() => setActiveTab("active")}
+        >
+          <span className="flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                activeRequests.length > 0
+                  ? "bg-emerald-500 animate-pulse"
+                  : "bg-slate-400"
+              }`}
+            />
 
-        <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit mb-6">
-          <TabButton
-            active={activeTab === "create"}
-            onClick={() => setActiveTab("create")}
-          >
-            + New Request
-          </TabButton>
+            Active Requests
 
-          <TabButton
-            active={activeTab === "requests"}
-            onClick={() => setActiveTab("requests")}
-          >
+            {activeRequests.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                {activeRequests.length}
+              </span>
+            )}
+          </span>
+        </TabButton>
+
+        <TabButton
+          active={activeTab === "requests"}
+          onClick={() => setActiveTab("requests")}
+        >
+          <span className="flex items-center gap-2">
             My Requests
+
             {requests.length > 0 && (
-              <span className="ml-2 px-1.5 py-0.5 rounded-md bg-white text-slate-500 text-[10px]">
+              <span className="px-1.5 py-0.5 rounded-md bg-white text-slate-500 text-[10px]">
                 {requests.length}
               </span>
             )}
-          </TabButton>
-        </div>
+          </span>
+        </TabButton>
+      </div>
 
-        {/* =================================================
-            CREATE
-        ================================================= */}
+      {activeTab === "create" && (
+        <CreateRequestForm
+          form={form}
+          fieldErrors={fieldErrors}
+          hospitals={hospitals}
+          loadingHospitals={loadingHospitals}
+          submitting={submitting}
+          onChange={handleChange}
+          onHospitalChange={handleHospitalChange}
+          onSubmit={handleSubmit}
+          onCancel={resetForm}
+        />
+      )}
 
-        {activeTab === "create" && (
-          <CreateRequestForm
-            form={form}
-            fieldErrors={fieldErrors}
-            hospitals={hospitals}
-            loadingHospitals={loadingHospitals}
-            hospitalInputMode={hospitalInputMode}
-            submitting={submitting}
-            onChange={handleChange}
-            onHospitalChange={handleHospitalChange}
-            onHospitalInputModeChange={handleHospitalInputModeChange}
-            onSubmit={handleSubmit}
-            onCancel={() => {
-              setForm(EMPTY_FORM);
-              setHospitalInputMode("select");
-              setFieldErrors({});
-              setErrorMessage("");
-            }}
-          />
-        )}
+      {activeTab === "active" && (
+        <ActiveRequestsList
+          requests={activeRequests}
+          loading={loadingActiveRequests}
+          onOpen={openRequest}
+          onCreate={() => setActiveTab("create")}
+        />
+      )}
 
-        {/* =================================================
-            REQUESTS
-        ================================================= */}
-
-        {activeTab === "requests" && (
-          <RequestsList
-            requests={requests}
-            loading={loadingRequests}
-            cancellingId={cancellingId}
-            onOpen={openRequest}
-            onCancel={cancelRequest}
-            onCreate={() => setActiveTab("create")}
-          />
-        )}
-      </main>
-
-      {/* =================================================
-          DETAIL MODAL
-      ================================================= */}
+      {activeTab === "requests" && (
+        <RequestsList
+          requests={requests}
+          loading={loadingRequests}
+          cancellingId={cancellingId}
+          onOpen={openRequest}
+          onCancel={cancelRequest}
+          onCreate={() => setActiveTab("create")}
+        />
+      )}
 
       {(selectedRequest || loadingDetails) && (
         <RequestModal
@@ -662,46 +653,35 @@ const BloodRequest = () => {
   );
 };
 
-// =========================================================
-// CREATE FORM
-// =========================================================
-
 const CreateRequestForm = ({
   form,
   fieldErrors,
   hospitals,
   loadingHospitals,
-  hospitalInputMode,
   submitting,
   onChange,
   onHospitalChange,
-  onHospitalInputModeChange,
   onSubmit,
   onCancel,
 }) => {
   return (
-    <form onSubmit={onSubmit} className="grid lg:grid-cols-[1fr_340px] gap-6">
-      {/* ===================================================
-          FORM
-      =================================================== */}
-
+    <form
+      onSubmit={onSubmit}
+      className="grid lg:grid-cols-[1fr_340px] gap-6"
+    >
       <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden">
-        {/* Header */}
-
         <div className="px-5 sm:px-7 py-5 border-b border-slate-100">
-          <h3 className="font-bold text-slate-900">Blood request details</h3>
+          <h3 className="font-bold text-slate-900">
+            Blood request details
+          </h3>
 
           <p className="text-xs text-slate-400 mt-1">
-            Provide accurate information so the request can be processed
-            correctly.
+            Provide accurate information so the right
+            blood support can reach the patient.
           </p>
         </div>
 
         <div className="p-5 sm:p-7 space-y-8">
-          {/* =================================================
-              PATIENT
-          ================================================= */}
-
           <FormSection
             number="01"
             title="Patient information"
@@ -723,10 +703,12 @@ const CreateRequestForm = ({
                 name="bloodGroup"
                 value={form.bloodGroup}
                 onChange={onChange}
-                options={BLOOD_GROUPS.map((group) => ({
-                  value: group,
-                  label: group,
-                }))}
+                options={BLOOD_GROUPS.map(
+                  (group) => ({
+                    value: group,
+                    label: group,
+                  })
+                )}
                 placeholder="Select blood group"
                 required
                 error={fieldErrors.bloodGroup}
@@ -749,89 +731,36 @@ const CreateRequestForm = ({
             </div>
           </FormSection>
 
-          {/* =================================================
-              HOSPITAL
-          ================================================= */}
-
           <FormSection
             number="02"
             title="Hospital information"
-            description="Where should the blood be delivered?"
+            description="Where is the patient receiving care?"
           >
-            <div className="flex flex-wrap gap-2 mb-5">
-              <button
-                type="button"
-                onClick={() => onHospitalInputModeChange("select")}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold transition ${
-                  hospitalInputMode === "select"
-                    ? "bg-red-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                Select from list
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onHospitalInputModeChange("manual")}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold transition ${
-                  hospitalInputMode === "manual"
-                    ? "bg-red-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                Type hospital name
-              </button>
-            </div>
-
-            {hospitalInputMode === "select" ? (
-              <>
-                <SelectField
-                  label="Hospital"
-                  name="hospital"
-                  value={form.hospital}
-                  onChange={onHospitalChange}
-                  options={hospitals.map((hospital) => ({
-                    value: hospital._id,
-                    label:
-                      hospital.name || hospital.hospitalName || "Hospital",
-                  }))}
-                  placeholder={
-                    loadingHospitals
-                      ? "Loading hospitals..."
-                      : hospitals.length
-                        ? "Select hospital"
-                        : "No hospitals available"
-                  }
-                  required
-                  disabled={loadingHospitals}
-                  error={fieldErrors.hospital}
-                />
-
-                {!loadingHospitals && hospitals.length === 0 && (
-                  <div className="mt-3 rounded-xl bg-amber-50 border border-amber-100 p-3">
-                    <div className="flex gap-2">
-                      <span className="text-amber-600">⚠</span>
-
-                      <p className="text-xs text-amber-700 leading-5">
-                        No hospitals were returned by your hospital API. Switch
-                        to &quot;Type hospital name&quot; to enter one manually.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <InputField
-                label="Hospital name"
-                name="hospitalName"
-                value={form.hospitalName}
-                onChange={onChange}
-                placeholder="Enter hospital name"
-                required
-                error={fieldErrors.hospitalName}
-              />
-            )}
+            <SelectField
+              label="Hospital"
+              name="hospital"
+              value={form.hospital}
+              onChange={onHospitalChange}
+              options={hospitals.map(
+                (hospital) => ({
+                  value: hospital._id,
+                  label:
+                    hospital.name ||
+                    hospital.hospitalName ||
+                    "Hospital",
+                })
+              )}
+              placeholder={
+                loadingHospitals
+                  ? "Loading hospitals..."
+                  : hospitals.length > 0
+                  ? "Select hospital"
+                  : "No hospitals available"
+              }
+              required
+              disabled={loadingHospitals}
+              error={fieldErrors.hospital}
+            />
 
             <div className="grid sm:grid-cols-2 gap-5 mt-5">
               <InputField
@@ -854,11 +783,19 @@ const CreateRequestForm = ({
                 error={fieldErrors.address}
               />
             </div>
-          </FormSection>
 
-          {/* =================================================
-              URGENCY
-          ================================================= */}
+            {hospitals.length === 0 &&
+              !loadingHospitals && (
+                <div className="mt-4 rounded-xl bg-amber-50 border border-amber-100 p-4">
+                  <p className="text-xs text-amber-700 leading-5">
+                    No hospitals are currently
+                    available. A registered hospital
+                    must be available before a blood
+                    request can be submitted.
+                  </p>
+                </div>
+              )}
+          </FormSection>
 
           <FormSection
             number="03"
@@ -870,12 +807,16 @@ const CreateRequestForm = ({
                 <UrgencyOption
                   key={urgency.value}
                   urgency={urgency}
-                  selected={form.urgency === urgency.value}
+                  selected={
+                    form.urgency ===
+                    urgency.value
+                  }
                   onClick={() =>
                     onChange({
                       target: {
                         name: "urgency",
-                        value: urgency.value,
+                        value:
+                          urgency.value,
                       },
                     })
                   }
@@ -883,10 +824,6 @@ const CreateRequestForm = ({
               ))}
             </div>
           </FormSection>
-
-          {/* =================================================
-              DATE
-          ================================================= */}
 
           <FormSection
             number="04"
@@ -905,10 +842,6 @@ const CreateRequestForm = ({
               />
             </div>
           </FormSection>
-
-          {/* =================================================
-              CONTACT
-          ================================================= */}
 
           <FormSection
             number="05"
@@ -939,14 +872,10 @@ const CreateRequestForm = ({
             </div>
           </FormSection>
 
-          {/* =================================================
-              NOTES
-          ================================================= */}
-
           <FormSection
             number="06"
             title="Additional information"
-            description="Anything else donors or healthcare staff should know?"
+            description="Anything else donors should know?"
           >
             <textarea
               name="additionalNotes"
@@ -964,10 +893,6 @@ const CreateRequestForm = ({
           </FormSection>
         </div>
 
-        {/* =================================================
-            FORM FOOTER
-        ================================================= */}
-
         <div className="px-5 sm:px-7 py-5 bg-slate-50 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
           <button
             type="button"
@@ -980,7 +905,7 @@ const CreateRequestForm = ({
 
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || hospitals.length === 0}
             className="px-6 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-lg shadow-red-600/15 disabled:opacity-60 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
           >
             {submitting ? (
@@ -998,10 +923,6 @@ const CreateRequestForm = ({
         </div>
       </div>
 
-      {/* ===================================================
-          SIDEBAR
-      =================================================== */}
-
       <aside className="space-y-5">
         <div className="bg-[#071f3d] rounded-3xl p-6 text-white">
           <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center mb-5">
@@ -1009,12 +930,12 @@ const CreateRequestForm = ({
           </div>
 
           <h3 className="text-lg font-bold">
-            You're helping someone get closer to care.
+            Every request can connect a donor to someone in need.
           </h3>
 
           <p className="text-xs text-slate-300 leading-5 mt-3">
-            Accurate blood request information helps Sahara connect requests
-            with the right healthcare resources.
+            Sahara helps people discover blood needs
+            and connect with healthcare resources.
           </p>
         </div>
 
@@ -1026,7 +947,7 @@ const CreateRequestForm = ({
           <div className="mt-4 space-y-3">
             <ChecklistItem text="Verify the patient's blood group" />
             <ChecklistItem text="Use a reachable contact number" />
-            <ChecklistItem text="Select a hospital or enter its name" />
+            <ChecklistItem text="Select the correct hospital" />
             <ChecklistItem text="Choose the correct urgency" />
             <ChecklistItem text="Check the required-by date" />
           </div>
@@ -1039,11 +960,15 @@ const CreateRequestForm = ({
             </div>
 
             <div>
-              <h3 className="text-sm font-bold text-red-900">Emergency?</h3>
+              <h3 className="text-sm font-bold text-red-900">
+                Emergency?
+              </h3>
 
               <p className="text-xs text-red-700 leading-5 mt-1">
-                If this is a life-threatening emergency, use Sahara Emergency
-                SOS instead of waiting for a blood request response.
+                If this is a life-threatening
+                emergency, use Sahara Emergency
+                SOS instead of waiting for a blood
+                request response.
               </p>
             </div>
           </div>
@@ -1053,9 +978,256 @@ const CreateRequestForm = ({
   );
 };
 
-// =========================================================
-// REQUEST LIST
-// =========================================================
+const ActiveRequestsList = ({
+  requests,
+  loading,
+  onOpen,
+  onCreate,
+}) => {
+  if (loading) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-3xl p-12">
+        <div className="flex flex-col items-center justify-center">
+          <Spinner dark />
+
+          <p className="text-sm font-medium text-slate-600 mt-4">
+            Finding active blood requests...
+          </p>
+
+          <p className="text-xs text-slate-400 mt-1">
+            Checking the Sahara community
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (requests.length === 0) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-3xl py-16 px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+          <span className="text-2xl">
+            ✓
+          </span>
+        </div>
+
+        <h3 className="text-xl font-bold text-slate-900 mt-5">
+          No active blood requests
+        </h3>
+
+        <p className="text-sm text-slate-500 max-w-md mx-auto leading-6 mt-2">
+          There are currently no open blood requests
+          that need assistance.
+        </p>
+
+        
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-5">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-600">
+                LIVE REQUESTS
+              </p>
+            </div>
+
+            <h3 className="text-2xl font-black text-slate-900 mt-2">
+              People who need blood
+            </h3>
+
+            <p className="text-sm text-slate-500 mt-1">
+              Active requests from the Sahara community.
+            </p>
+          </div>
+
+          <div className="px-3 py-2 rounded-xl bg-red-50 text-red-700 text-xs font-bold w-fit">
+            {requests.length} active{" "}
+            {requests.length === 1
+              ? "request"
+              : "requests"}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {requests.map((request) => (
+          <ActiveRequestCard
+            key={request._id}
+            request={request}
+            onOpen={onOpen}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ActiveRequestCard = ({
+  request,
+  onOpen,
+}) => {
+  const urgency = getUrgencyConfig(
+    request.urgency
+  );
+
+  const hospital =
+    request.hospital?.name ||
+    request.hospital?.hospitalName ||
+    request.hospitalName ||
+    "Hospital not specified";
+
+  const city =
+    request.city ||
+    request.hospital?.city ||
+    "Location unavailable";
+
+  const requiredDate = request.requiredBy
+    ? new Date(request.requiredBy)
+    : null;
+
+  const isExpired =
+    requiredDate &&
+    requiredDate <= new Date();
+
+  return (
+    <div
+      className={`bg-white rounded-3xl border p-5 sm:p-6 transition hover:shadow-xl hover:shadow-slate-900/5 ${
+        request.urgency === "Critical"
+          ? "border-red-200"
+          : "border-slate-200"
+      }`}
+    >
+      <div className="flex flex-col lg:flex-row gap-5">
+        <div className="flex items-center gap-4 flex-1">
+          <div
+            className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 ${
+              request.urgency === "Critical"
+                ? "bg-red-100 text-red-700"
+                : "bg-red-50 text-red-600"
+            }`}
+          >
+            <span className="text-xl font-black">
+              {request.bloodGroup}
+            </span>
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-black text-slate-900">
+                {request.patientName}
+              </h3>
+
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                OPEN
+              </span>
+            </div>
+
+            <p className="text-sm text-slate-500 mt-1">
+              {request.unitsRequired}{" "}
+              {request.unitsRequired === 1
+                ? "unit"
+                : "units"}{" "}
+              of{" "}
+              <span className="font-bold text-red-600">
+                {request.bloodGroup}
+              </span>{" "}
+              required
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={`px-3 py-2 rounded-xl text-xs font-bold ${urgency.badge}`}
+          >
+            {request.urgency || "Medium"} urgency
+          </span>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+        <ActiveInfo
+          icon="🏥"
+          label="Hospital"
+          value={hospital}
+        />
+
+        <ActiveInfo
+          icon="📍"
+          label="Location"
+          value={city}
+        />
+
+        <ActiveInfo
+          icon="🩸"
+          label="Blood needed"
+          value={`${request.unitsRequired} ${
+            request.unitsRequired === 1
+              ? "unit"
+              : "units"
+          }`}
+        />
+
+        <ActiveInfo
+          icon="⏱"
+          label="Required by"
+          value={
+            isExpired
+              ? "Expired"
+              : formatDate(
+                  request.requiredBy,
+                  true
+                )
+          }
+        />
+      </div>
+
+      {(request.address ||
+        request.hospital?.address) && (
+        <div className="mt-4 flex items-start gap-2 text-xs text-slate-500">
+          <span>📍</span>
+
+          <span className="leading-5">
+            {request.address ||
+              request.hospital?.address}
+          </span>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-5 pt-5 border-t border-slate-100">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+            Request created
+          </p>
+
+          <p className="text-xs font-semibold text-slate-600 mt-1">
+            {formatDate(
+              request.createdAt,
+              true
+            )}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() =>
+            onOpen(request._id)
+          }
+          className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition"
+        >
+          View request
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const RequestsList = ({
   requests,
@@ -1091,8 +1263,9 @@ const RequestsList = ({
         </h3>
 
         <p className="text-sm text-slate-500 max-w-md mx-auto leading-6 mt-2">
-          When you create a blood request, you'll be able to track its status
-          and details here.
+          When you create a blood request, you'll
+          be able to track its status and details
+          here.
         </p>
 
         <button
@@ -1121,14 +1294,19 @@ const RequestsList = ({
   );
 };
 
-// =========================================================
-// REQUEST CARD
-// =========================================================
+const RequestCard = ({
+  request,
+  cancellingId,
+  onOpen,
+  onCancel,
+}) => {
+  const urgency = getUrgencyConfig(
+    request.urgency
+  );
 
-const RequestCard = ({ request, cancellingId, onOpen, onCancel }) => {
-  const urgency = getUrgencyConfig(request.urgency);
-
-  const status = getStatusConfig(request.status);
+  const status = getStatusConfig(
+    request.status
+  );
 
   const hospital =
     request.hospital?.name ||
@@ -1139,11 +1317,11 @@ const RequestCard = ({ request, cancellingId, onOpen, onCancel }) => {
   return (
     <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 hover:border-slate-300 hover:shadow-lg hover:shadow-slate-900/5 transition">
       <div className="flex flex-col lg:flex-row lg:items-center gap-5">
-        {/* Blood */}
-
         <div className="flex items-center gap-4 flex-1">
           <div className="w-14 h-14 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-            <span className="text-xl font-black">{request.bloodGroup}</span>
+            <span className="text-xl font-black">
+              {request.bloodGroup}
+            </span>
           </div>
 
           <div className="min-w-0">
@@ -1157,31 +1335,39 @@ const RequestCard = ({ request, cancellingId, onOpen, onCancel }) => {
 
             <p className="text-xs text-slate-500 mt-1">
               {request.unitsRequired}{" "}
-              {request.unitsRequired === 1 ? "unit" : "units"} •{" "}
-              {request.bloodGroup}
+              {request.unitsRequired === 1
+                ? "unit"
+                : "units"}{" "}
+              • {request.bloodGroup}
             </p>
           </div>
         </div>
 
-        {/* Details */}
-
         <div className="grid sm:grid-cols-3 gap-4 lg:w-[500px]">
-          <InfoItem icon="🏥" label="Hospital" value={hospital} />
+          <InfoItem
+            icon="🏥"
+            label="Hospital"
+            value={hospital}
+          />
 
           <InfoItem
             icon="📍"
             label="City"
-            value={request.city || request.hospital?.city || "—"}
+            value={
+              request.city ||
+              request.hospital?.city ||
+              "—"
+            }
           />
 
           <InfoItem
             icon="📅"
             label="Required by"
-            value={formatDate(request.requiredBy)}
+            value={formatDate(
+              request.requiredBy
+            )}
           />
         </div>
-
-        {/* Actions */}
 
         <div className="flex flex-wrap items-center gap-2 lg:w-auto">
           <span
@@ -1192,7 +1378,9 @@ const RequestCard = ({ request, cancellingId, onOpen, onCancel }) => {
 
           <button
             type="button"
-            onClick={() => onOpen(request._id)}
+            onClick={() =>
+              onOpen(request._id)
+            }
             className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
           >
             View
@@ -1201,11 +1389,18 @@ const RequestCard = ({ request, cancellingId, onOpen, onCancel }) => {
           {request.status === "Open" && (
             <button
               type="button"
-              disabled={cancellingId === request._id}
-              onClick={() => onCancel(request._id)}
+              disabled={
+                cancellingId ===
+                request._id
+              }
+              onClick={() =>
+                onCancel(request._id)
+              }
               className="px-3 py-2 rounded-xl border border-red-100 bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100 disabled:opacity-50 transition"
             >
-              {cancellingId === request._id ? "Cancelling..." : "Cancel"}
+              {cancellingId === request._id
+                ? "Cancelling..."
+                : "Cancel"}
             </button>
           )}
         </div>
@@ -1213,10 +1408,6 @@ const RequestCard = ({ request, cancellingId, onOpen, onCancel }) => {
     </div>
   );
 };
-
-// =========================================================
-// REQUEST MODAL
-// =========================================================
 
 const RequestModal = ({
   request,
@@ -1233,8 +1424,6 @@ const RequestModal = ({
       />
 
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl">
-        {/* Header */}
-
         <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-5 sm:px-7 py-5 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-red-600">
@@ -1259,12 +1448,12 @@ const RequestModal = ({
           <div className="p-14 flex flex-col items-center">
             <Spinner dark />
 
-            <p className="text-sm text-slate-500 mt-4">Loading request...</p>
+            <p className="text-sm text-slate-500 mt-4">
+              Loading request...
+            </p>
           </div>
         ) : request ? (
           <div className="p-5 sm:p-7">
-            {/* Summary */}
-
             <div className="rounded-2xl bg-red-50 border border-red-100 p-5">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-white text-red-600 flex items-center justify-center shadow-sm">
@@ -1280,70 +1469,112 @@ const RequestModal = ({
 
                   <p className="text-sm text-slate-500 mt-1">
                     {request.unitsRequired}{" "}
-                    {request.unitsRequired === 1 ? "unit" : "units"} required
+                    {request.unitsRequired === 1
+                      ? "unit"
+                      : "units"}{" "}
+                    required
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Status */}
-
             <div className="grid sm:grid-cols-2 gap-3 mt-5">
               <DetailBox
                 label="Request status"
-                value={request.status || "Open"}
+                value={
+                  request.status || "Open"
+                }
               />
 
-              <DetailBox label="Urgency" value={request.urgency || "Medium"} />
+              <DetailBox
+                label="Urgency"
+                value={
+                  request.urgency ||
+                  "Medium"
+                }
+              />
 
               <DetailBox
                 label="Required by"
-                value={formatDate(request.requiredBy, true)}
+                value={formatDate(
+                  request.requiredBy,
+                  true
+                )}
               />
 
               <DetailBox
                 label="Created"
-                value={formatDate(request.createdAt, true)}
+                value={formatDate(
+                  request.createdAt,
+                  true
+                )}
               />
             </div>
-
-            {/* Hospital */}
 
             <DetailSection title="Hospital">
               <div className="grid sm:grid-cols-2 gap-4">
                 <DetailBox
                   label="Hospital"
                   value={
-                    request.hospital?.name ||
-                    request.hospital?.hospitalName ||
-                    request.hospitalName ||
+                    request.hospital
+                      ?.name ||
+                    request.hospital
+                      ?.hospitalName ||
                     "—"
                   }
                 />
 
                 <DetailBox
                   label="City"
-                  value={request.city || request.hospital?.city || "—"}
+                  value={
+                    request.city ||
+                    request.hospital
+                      ?.city ||
+                    "—"
+                  }
                 />
 
                 <DetailBox
                   label="Address"
-                  value={request.address || request.hospital?.address || "—"}
+                  value={
+                    request.address ||
+                    request.hospital
+                      ?.address ||
+                    "—"
+                  }
                 />
+
+                {request.hospital?.phone && (
+                  <DetailBox
+                    label="Hospital phone"
+                    value={
+                      request.hospital
+                        .phone
+                    }
+                  />
+                )}
               </div>
             </DetailSection>
-
-            {/* Contact */}
 
             <DetailSection title="Emergency contact">
               <div className="grid sm:grid-cols-2 gap-4">
-                <DetailBox label="Name" value={request.contactName || "—"} />
+                <DetailBox
+                  label="Name"
+                  value={
+                    request.contactName ||
+                    "—"
+                  }
+                />
 
-                <DetailBox label="Phone" value={request.contactPhone || "—"} />
+                <DetailBox
+                  label="Phone"
+                  value={
+                    request.contactPhone ||
+                    "—"
+                  }
+                />
               </div>
             </DetailSection>
-
-            {/* Notes */}
 
             {request.additionalNotes && (
               <DetailSection title="Additional notes">
@@ -1355,31 +1586,30 @@ const RequestModal = ({
               </DetailSection>
             )}
 
-            {/* Requested by */}
-
             {request.requestedBy && (
               <DetailSection title="Requested by">
                 <div className="rounded-xl bg-slate-50 border border-slate-100 p-4">
                   <p className="text-sm font-semibold text-slate-800">
-                    {request.requestedBy.fullName || "User"}
+                    {request.requestedBy
+                      .fullName ||
+                      request.requestedBy
+                        .name ||
+                      "User"}
                   </p>
 
-                  {request.requestedBy.email && (
+                  {request.requestedBy
+                    .email && (
                     <p className="text-xs text-slate-500 mt-1">
-                      {request.requestedBy.email}
-                    </p>
-                  )}
-
-                  {request.requestedBy.phone && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      {request.requestedBy.phone}
+                      {
+                        request
+                          .requestedBy
+                          .email
+                      }
                     </p>
                   )}
                 </div>
               </DetailSection>
             )}
-
-            {/* Footer */}
 
             <div className="flex justify-end gap-3 mt-7 pt-5 border-t border-slate-100">
               <button
@@ -1390,18 +1620,28 @@ const RequestModal = ({
                 Close
               </button>
 
-              {request.status === "Open" && (
-                <button
-                  type="button"
-                  disabled={cancellingId === request._id}
-                  onClick={() => onCancel(request._id)}
-                  className="px-5 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 disabled:opacity-50"
-                >
-                  {cancellingId === request._id
-                    ? "Cancelling..."
-                    : "Cancel request"}
-                </button>
-              )}
+              {request.status ===
+                "Open" &&
+                request.requestedBy && (
+                  <button
+                    type="button"
+                    disabled={
+                      cancellingId ===
+                      request._id
+                    }
+                    onClick={() =>
+                      onCancel(
+                        request._id
+                      )
+                    }
+                    className="px-5 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {cancellingId ===
+                    request._id
+                      ? "Cancelling..."
+                      : "Cancel request"}
+                  </button>
+                )}
             </div>
           </div>
         ) : (
@@ -1416,11 +1656,12 @@ const RequestModal = ({
   );
 };
 
-// =========================================================
-// FORM SECTION
-// =========================================================
-
-const FormSection = ({ number, title, description, children }) => (
+const FormSection = ({
+  number,
+  title,
+  description,
+  children,
+}) => (
   <section>
     <div className="flex gap-3 mb-5">
       <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-[10px] font-black shrink-0">
@@ -1428,19 +1669,19 @@ const FormSection = ({ number, title, description, children }) => (
       </div>
 
       <div>
-        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+        <h3 className="text-sm font-bold text-slate-900">
+          {title}
+        </h3>
 
-        <p className="text-xs text-slate-400 mt-0.5">{description}</p>
+        <p className="text-xs text-slate-400 mt-0.5">
+          {description}
+        </p>
       </div>
     </div>
 
     {children}
   </section>
 );
-
-// =========================================================
-// INPUT
-// =========================================================
 
 const InputField = ({
   label,
@@ -1458,7 +1699,11 @@ const InputField = ({
     <label className="block text-xs font-bold text-slate-600 mb-2">
       {label}
 
-      {required && <span className="text-red-500 ml-1">*</span>}
+      {required && (
+        <span className="text-red-500 ml-1">
+          *
+        </span>
+      )}
     </label>
 
     <input
@@ -1476,13 +1721,13 @@ const InputField = ({
       } px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:ring-4 transition`}
     />
 
-    {error && <p className="text-[11px] text-red-600 mt-1.5">{error}</p>}
+    {error && (
+      <p className="text-[11px] text-red-600 mt-1.5">
+        {error}
+      </p>
+    )}
   </div>
 );
-
-// =========================================================
-// SELECT
-// =========================================================
 
 const SelectField = ({
   label,
@@ -1499,7 +1744,11 @@ const SelectField = ({
     <label className="block text-xs font-bold text-slate-600 mb-2">
       {label}
 
-      {required && <span className="text-red-500 ml-1">*</span>}
+      {required && (
+        <span className="text-red-500 ml-1">
+          *
+        </span>
+      )}
     </label>
 
     <select
@@ -1508,54 +1757,67 @@ const SelectField = ({
       onChange={onChange}
       disabled={disabled}
       className={`w-full rounded-xl border ${
-        error ? "border-red-300 bg-red-50/40" : "border-slate-200 bg-slate-50"
+        error
+          ? "border-red-300 bg-red-50/40"
+          : "border-slate-200 bg-slate-50"
       } px-4 py-3 text-sm text-slate-800 outline-none focus:bg-white focus:border-red-400 focus:ring-4 focus:ring-red-500/10 transition disabled:opacity-50 disabled:cursor-not-allowed`}
     >
-      <option value="">{placeholder}</option>
+      <option value="">
+        {placeholder}
+      </option>
 
       {options.map((option) => (
-        <option key={option.value} value={option.value}>
+        <option
+          key={option.value}
+          value={option.value}
+        >
           {option.label}
         </option>
       ))}
     </select>
 
-    {error && <p className="text-[11px] text-red-600 mt-1.5">{error}</p>}
+    {error && (
+      <p className="text-[11px] text-red-600 mt-1.5">
+        {error}
+      </p>
+    )}
   </div>
 );
 
-// =========================================================
-// URGENCY OPTION
-// =========================================================
-
-const UrgencyOption = ({ urgency, selected, onClick }) => {
+const UrgencyOption = ({
+  urgency,
+  selected,
+  onClick,
+}) => {
   const styles = {
     Low: {
-      selected: "border-emerald-400 bg-emerald-50",
+      selected:
+        "border-emerald-400 bg-emerald-50",
       dot: "bg-emerald-500",
       text: "text-emerald-700",
     },
-
     Medium: {
-      selected: "border-amber-400 bg-amber-50",
+      selected:
+        "border-amber-400 bg-amber-50",
       dot: "bg-amber-500",
       text: "text-amber-700",
     },
-
     High: {
-      selected: "border-orange-400 bg-orange-50",
+      selected:
+        "border-orange-400 bg-orange-50",
       dot: "bg-orange-500",
       text: "text-orange-700",
     },
-
     Critical: {
-      selected: "border-red-400 bg-red-50",
+      selected:
+        "border-red-400 bg-red-50",
       dot: "bg-red-500",
       text: "text-red-700",
     },
   };
 
-  const style = styles[urgency.value];
+  const style =
+    styles[urgency.value];
 
   return (
     <button
@@ -1568,11 +1830,15 @@ const UrgencyOption = ({ urgency, selected, onClick }) => {
       }`}
     >
       <div className="flex items-center gap-2">
-        <span className={`w-2.5 h-2.5 rounded-full ${style.dot}`} />
+        <span
+          className={`w-2.5 h-2.5 rounded-full ${style.dot}`}
+        />
 
         <span
           className={`text-xs font-bold ${
-            selected ? style.text : "text-slate-700"
+            selected
+              ? style.text
+              : "text-slate-700"
           }`}
         >
           {urgency.label}
@@ -1586,63 +1852,58 @@ const UrgencyOption = ({ urgency, selected, onClick }) => {
   );
 };
 
-// =========================================================
-// STATUS
-// =========================================================
-
 const getStatusConfig = (status) => {
   switch (status) {
     case "Completed":
       return {
         label: "Completed",
-        badge: "bg-emerald-50 text-emerald-700",
+        badge:
+          "bg-emerald-50 text-emerald-700",
       };
 
     case "Cancelled":
       return {
         label: "Cancelled",
-        badge: "bg-slate-100 text-slate-500",
+        badge:
+          "bg-slate-100 text-slate-500",
       };
 
     default:
       return {
         label: "Open",
-        badge: "bg-blue-50 text-blue-700",
+        badge:
+          "bg-blue-50 text-blue-700",
       };
   }
 };
-
-// =========================================================
-// URGENCY
-// =========================================================
 
 const getUrgencyConfig = (urgency) => {
   switch (urgency) {
     case "Critical":
       return {
-        badge: "bg-red-50 text-red-700",
+        badge:
+          "bg-red-50 text-red-700",
       };
 
     case "High":
       return {
-        badge: "bg-orange-50 text-orange-700",
+        badge:
+          "bg-orange-50 text-orange-700",
       };
 
     case "Low":
       return {
-        badge: "bg-emerald-50 text-emerald-700",
+        badge:
+          "bg-emerald-50 text-emerald-700",
       };
 
     default:
       return {
-        badge: "bg-amber-50 text-amber-700",
+        badge:
+          "bg-amber-50 text-amber-700",
       };
   }
 };
-
-// =========================================================
-// STATUS BADGE
-// =========================================================
 
 const StatusBadge = ({ config }) => (
   <span
@@ -1652,11 +1913,11 @@ const StatusBadge = ({ config }) => (
   </span>
 );
 
-// =========================================================
-// INFO ITEM
-// =========================================================
-
-const InfoItem = ({ icon, label, value }) => (
+const InfoItem = ({
+  icon,
+  label,
+  value,
+}) => (
   <div className="min-w-0">
     <p className="text-[10px] uppercase tracking-wide font-bold text-slate-400">
       {label}
@@ -1668,11 +1929,32 @@ const InfoItem = ({ icon, label, value }) => (
   </div>
 );
 
-// =========================================================
-// DETAIL BOX
-// =========================================================
+const ActiveInfo = ({
+  icon,
+  label,
+  value,
+}) => (
+  <div className="rounded-2xl bg-slate-50 border border-slate-100 p-3.5">
+    <div className="flex items-center gap-2">
+      <span className="text-sm">
+        {icon}
+      </span>
 
-const DetailBox = ({ label, value }) => (
+      <p className="text-[9px] uppercase tracking-wide font-bold text-slate-400">
+        {label}
+      </p>
+    </div>
+
+    <p className="text-xs font-bold text-slate-700 mt-2 truncate">
+      {value || "—"}
+    </p>
+  </div>
+);
+
+const DetailBox = ({
+  label,
+  value,
+}) => (
   <div className="rounded-xl bg-slate-50 border border-slate-100 p-3.5">
     <p className="text-[10px] uppercase tracking-wide font-bold text-slate-400">
       {label}
@@ -1684,11 +1966,10 @@ const DetailBox = ({ label, value }) => (
   </div>
 );
 
-// =========================================================
-// DETAIL SECTION
-// =========================================================
-
-const DetailSection = ({ title, children }) => (
+const DetailSection = ({
+  title,
+  children,
+}) => (
   <section className="mt-6">
     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
       {title}
@@ -1698,24 +1979,28 @@ const DetailSection = ({ title, children }) => (
   </section>
 );
 
-// =========================================================
-// STAT CARD
-// =========================================================
-
-const StatCard = ({ label, value, color, className = "" }) => {
+const StatCard = ({
+  label,
+  value,
+  color,
+  className = "",
+}) => {
   const colors = {
     red: "bg-red-50 text-red-600",
-
-    emerald: "bg-emerald-50 text-emerald-600",
-
-    slate: "bg-slate-100 text-slate-600",
-
+    emerald:
+      "bg-emerald-50 text-emerald-600",
+    slate:
+      "bg-slate-100 text-slate-600",
     blue: "bg-blue-50 text-blue-600",
   };
 
   return (
-    <div className={`px-3 py-2 rounded-xl ${colors[color]} ${className}`}>
-      <p className="text-lg font-black">{value}</p>
+    <div
+      className={`px-3 py-2 rounded-xl ${colors[color]} ${className}`}
+    >
+      <p className="text-lg font-black">
+        {value}
+      </p>
 
       <p className="text-[9px] font-semibold uppercase tracking-wide opacity-70">
         {label}
@@ -1724,29 +2009,29 @@ const StatCard = ({ label, value, color, className = "" }) => {
   );
 };
 
-// =========================================================
-// TAB
-// =========================================================
-
-const TabButton = ({ active, onClick, children }) => (
+const TabButton = ({
+  active,
+  onClick,
+  children,
+}) => (
   <button
     type="button"
     onClick={onClick}
-    className={`px-4 py-2.5 rounded-lg text-xs font-bold transition ${
+    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition ${
       active
         ? "bg-white text-slate-900 shadow-sm"
-        : "text-slate-500 hover:text-slate-700"
+        : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
     }`}
   >
     {children}
   </button>
 );
 
-// =========================================================
-// ALERT
-// =========================================================
-
-const Alert = ({ type, message, onClose }) => {
+const Alert = ({
+  type,
+  message,
+  onClose,
+}) => {
   const success = type === "success";
 
   return (
@@ -1758,9 +2043,13 @@ const Alert = ({ type, message, onClose }) => {
       }`}
     >
       <div className="flex items-start gap-3">
-        <span className="font-bold">{success ? "✓" : "!"}</span>
+        <span className="font-bold">
+          {success ? "✓" : "!"}
+        </span>
 
-        <p className="text-sm flex-1">{message}</p>
+        <p className="text-sm flex-1">
+          {message}
+        </p>
 
         <button
           type="button"
@@ -1774,25 +2063,24 @@ const Alert = ({ type, message, onClose }) => {
   );
 };
 
-// =========================================================
-// CHECKLIST
-// =========================================================
-
-const ChecklistItem = ({ text }) => (
+const ChecklistItem = ({
+  text,
+}) => (
   <div className="flex gap-2.5 items-start">
     <span className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center text-[10px] shrink-0">
       ✓
     </span>
 
-    <p className="text-xs text-slate-500 leading-5">{text}</p>
+    <p className="text-xs text-slate-500 leading-5">
+      {text}
+    </p>
   </div>
 );
 
-// =========================================================
-// FORMAT DATE
-// =========================================================
-
-const formatDate = (date, includeTime = false) => {
+const formatDate = (
+  date,
+  includeTime = false
+) => {
   if (!date) {
     return "—";
   }
@@ -1803,21 +2091,22 @@ const formatDate = (date, includeTime = false) => {
     return "—";
   }
 
-  return new Intl.DateTimeFormat("en-NP", {
-    dateStyle: "medium",
-    ...(includeTime
-      ? {
-          timeStyle: "short",
-        }
-      : {}),
-  }).format(parsed);
+  return new Intl.DateTimeFormat(
+    "en-NP",
+    {
+      dateStyle: "medium",
+      ...(includeTime
+        ? {
+            timeStyle: "short",
+          }
+        : {}),
+    }
+  ).format(parsed);
 };
 
-// =========================================================
-// SPINNER
-// =========================================================
-
-const Spinner = ({ dark = false }) => (
+const Spinner = ({
+  dark = false,
+}) => (
   <span
     className={`inline-block w-4 h-4 border-2 rounded-full animate-spin ${
       dark
@@ -1827,11 +2116,9 @@ const Spinner = ({ dark = false }) => (
   />
 );
 
-// =========================================================
-// ICONS
-// =========================================================
-
-const BloodDropIcon = ({ size = 20 }) => (
+const BloodDropIcon = ({
+  size = 20,
+}) => (
   <svg
     width={size}
     height={size}

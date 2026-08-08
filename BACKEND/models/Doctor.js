@@ -68,6 +68,11 @@ const doctorSchema = new mongoose.Schema(
       min: 0,
     },
 
+    virtualConsultationFee: {
+      type: Number,
+      min: 0,
+    },
+
     // ============================================
     // AVAILABILITY
     // ============================================
@@ -127,5 +132,17 @@ doctorSchema.index({
   specialization: 1,
   hospital: 1,
 });
+
+doctorSchema.methods.getFeeForType = function (appointmentType) {
+  if (appointmentType === "Virtual") {
+    if (this.virtualConsultationFee != null) {
+      return this.virtualConsultationFee;
+    }
+
+    return Math.round(this.consultationFee * 0.7);
+  }
+
+  return this.consultationFee;
+};
  
 module.exports = mongoose.model("Doctor", doctorSchema);
